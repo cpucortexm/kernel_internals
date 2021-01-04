@@ -69,7 +69,7 @@ User space virtual memory layout contains 4 logical areas:
    data stores static initialised variables
    BSS stores static uninitialised variables
    heap for malloc()
-3. Memory mapping segment: E.g. process can do a memory mapping using mmap().
+3. Memory mapping segment: E.g. process can do a memory mapping using mmap() e.g. mapping a file into process memory
 4. Stack segment: Mostly for local variables
 
 

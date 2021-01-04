@@ -84,15 +84,19 @@ Task Q {
 
 
 ## Critical Section
+***Critical Section*** contains the portion of the code which needs to be protected to avoid concurrent access by two or more threads.
+e.g. shared memory, updating some device (GPIO) registers etc
 
 ## Semaphores vs Mutex
 
-## Cache coherancy problem and solution in hardware (local cache of CPU)
+## Cache coherancy problem and solution in hardware (local cache of CPU) and cache thrashing
 
-## Memory Barriers
+## Memory Ordering and Barriers
+
 
 ## Deadlock
 
 ## Priority inversion
 
 ## Thread and Process execution and synchronisation
+
