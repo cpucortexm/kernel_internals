@@ -89,7 +89,6 @@ e.g. shared memory, updating some device (GPIO) registers etc
 
 ## Semaphores vs Mutex
 
-## Cache coherancy problem and solution in hardware (local cache of CPU) and cache thrashing
 
 ## Memory Ordering and Barriers
 
@@ -100,3 +99,4 @@ e.g. shared memory, updating some device (GPIO) registers etc
 
 ## Thread and Process execution and synchronisation
 
+## Linux Cache Policys

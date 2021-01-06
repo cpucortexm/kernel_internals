@@ -149,8 +149,25 @@ fam_ptr = container_of(fam_id_ptr, struct family, family_id);
 ~~~
 
 
-
 ## Kernel sleeping mechanisms
+Process needs to sleep if you are waiting for the resource or waiting for data from another process.The kernel scheduler manages a list of tasks to run, known as a run queue. Sleeping processes are not scheduled anymore, since they are removed from that run queue. Unless its state changes (that is, it wakes up), a sleeping process will never be executed.
+For this kernel has the concept of wait queue:
+*Wait Queue*:
+Wait queues are essentially used for blocked I/O, to wait for particular conditions to be true, and to sense data or resource availability.
+~~~
+struct __wait_queue {
+unsigned int flags;
+wait_queue_func_t func;
+struct list_head task_list; // every process that you want to put to sleep uses this list (hence the name wait queue)
+};
+~~~
+
+API:
+wait_event_interruptible() to block
+wake_up_interruptible() to unblock
+
+## Delay and Timers (jiffies)
+
 
 ## Kernel locking mechanisms
 *Race Condition*:
@@ -223,11 +240,74 @@ lock is released, a waiter in the wait queue is woken, moved off the wait_list, 
 
 ~~~
 
-## Work deferring mechanisms
-
 
 ## Device Tree
 
-## Delay and Timers (jiffies)
+## Cache thrashing
 
-## DMA in drivers
+## DMA in drivers and Cache coherency problem
+DMA introduces the cache coherency problem, where the main memory is out of sync with the cache in multicore systems or devices on the System on Chip.
+e.g.
+Lets assume a CPU with device controller (say SPI or I2C or CSI controller with internal hw buffer). There is a cache memory and main memory (RAM).
+
+***Case 1***
+If CPU writes new data to the location X which was already cached.The update happens only in cache and not to the main memory if it is a write back cache policy. If you now initiate a DMA transfer from location X in main memory to the device hw buffer then you use old or stale data at location X during DMA transfer. This can be solved using cache flush or cache clean, where you write back data from cache to main memory.
+
+***Case 2***
+If DMA transfers new data from hw buffer to memory at location X and if X was already cached, then the CPU will still read the old stale data in cache from location X.This is where you must invalidate the cache line (mark the cache content as invalid) so that you discard the old cache  contents completely and CPU will now have to re-read new data from the memory at location X into cache.
+
+Summary:
+A cache invalidate simply marks the cache contents as invalid. So the next time you access data, you will get what is in the main memory.
+
+A cache flush writes back data from cache into memory.
+
+
+Cache coherency problem solution is architecture specific.
+In coherent systems, CPU uses bus snooping hardware (bus snooping protocol) where when you initiate DMA with the main memory the hardware itself does cache flush/invalidate the memory.Hence hardware takes care of cache coherency problem.
+
+In non-coherent systems, device driver itself should flush/invalidate the data cache during DMA transfers.
+
+
+DMA steps in linux:
+• Allocate a DMA slave channel
+• Set slave and controller specific parameters
+• Get a descriptor for transaction
+• Submit the transaction
+• Issue pending requests and wait for callback notification
+
+
+In case if IOMMU(it is called SMMU in case of ARM) is used then there is the concept of bus address for DMA.
+In absence of IOMMU bus address  = physical address
+
+e.g. In Raspi there is no IOMMU hence physical address is used for DMA.
+
+In x86 platforms or in ARM cortex a53 have IOMMU.
+
+IOMMU is similar to MMU, but this is used for IO devices on the SOC which are connected to the CPU.
+
+What is DMA mapping:
+It means allocating DMA buffer and generating bus address(IOMMU)/physical address(non IOMMU) for it. Devices use bus/physical address based on if IOMMU is used or not.
+
+DMA mapping types:
+1. Coherent mapping
+2. Streaming mapping
+
+**Coherent mapping**:
+This does both : allocates memory and also does mapping of this buffer i.e. produce corresponding bus address
+The dma_alloc_coherent() function allocates uncached, unbuffered memory for a device for performing DMA. It  allocates pages, returns the CPU-viewed (virtual) address, and sets the third argument to the device-viewed address.
+Memory allocated is physically contiguous. Automatically manages cache cohereny problems but is too costly as it has to allocate memory and then flush/invalidate
+API:
+dma_alloc_coherent()
+dma_free_coherent()
+
+
+**Streaming mapping**:
+This only does the mapping for the already allocated buffers in the drivers. Does not automatically perform cache coherency problems.
+Also useful if the buffers are scattered and non-contiguous.
+1. Single page mapping (maps single buffer)
+2. Scatter gather mapping (maps several scattered buffers)
+
+API:
+dma_map_single()
+dma_unmap_single()
+dma_map_sg()
