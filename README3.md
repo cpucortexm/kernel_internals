@@ -43,6 +43,21 @@ __init is effective on built in drivers as it will free the memory of the functi
 __exit parameter tells the kernel to omit this function when the module is built-in, since in built in modules this functions would never execute.
 
 ## Platform drivers (I2C, SPI)
+Embedded SOC devices like UART, SPI, I2C, ethernet controllers etc are not hot pluggable. To handle such devices and to fit it into the device model, the platform devices are created.
+
+How probe or init gets called of platform devices gets called.
+In device tree for this device a compatible string should be defined
+hellokeys {
+ compatible = "arrow,hellokeys";
+};
+
+~~~
+static const struct of_device_id my_of_ids[] = {
+{ .compatible = "arrow,hellokeys"},
+{},
+}
+~~~
+On match the platform driver probe gets called.
 
 ## Char drivers and Network drivers
 
@@ -240,8 +255,59 @@ lock is released, a waiter in the wait queue is woken, moved off the wait_list, 
 
 ~~~
 
+## Semaphores vs Mutex
+Semaphores are usually used when there are multiple resources of the same type as counting objects. Here it is called counting semaphores.
+e.g. say we have 2 or more network sockets.
+semaphore count will be 2.
+If Task A acquires one socket count = 1
+If Task B acquires one socket count = 2
+If another Task C tries to get the socket, it will be blocked until one of the Tasks A or B releases the semaphore.
+
+There are three tasks that need access. A counting semaphore is used to limit the number of simultaneous socket connections. Each time a task is finished with the shared resource (that is, its socket closes), it must give back its semaphore so another task can gain access to the network.
+
+
+Semaphores can be used to signal the tasks from ISR i.e. for signalling from ISR.
+
+Binary semaphores are really just counting semaphores with a maximum count of 1. They are most often used for  synchronization. When a task needs to synchronize on an event, it will attempt to take a semaphore, blocking or sleeping until the semaphore becomes available or there is a timeout.
+
+Mutex is like binary semaphore but has the property of minimizing priority inversion (read priority inversion)
 
 ## Device Tree
+A data structure for defining the hardware so that this information of the hardware can be passed to the kernel.The kernel does not need to hardcode details of the hardware.
+.dtsi are include files which describe hardware that is common across multiple platforms.
+.dts are source files that describe hardware specific to one platform.
+
+3 major purposes DT is used:
+1. Platform Identification.
+ compatible string is used to define the platform
+ In dtsi file:
+ compatible = "atmel,sama5d2";
+
+In the kernel machine specific code
+~~~
+static const char *const sama5_alt_dt_board_compat[] __initconst = {
+"atmel,sama5d2",
+"atmel,sama5d4",
+NULL
+};
+DT_MACHINE_START(sama5_alt_dt, "Atmel SAMA5")
+/* Maintainer: Atmel */
+.init_machine = sama5_dt_device_init,
+.dt_compat = sama5_alt_dt_board_compat, // DT compatible
+.l2c_aux_mask = ~0UL,
+~~~
+
+2. Runtime configuration
+This includes kernel boot args and start of Root file system
+~~~
+chosen
+ {
+ bootargs = "console=ttyS0,115200 loglevel=8";
+ initrd-start = <0xc8000000>;
+ initrd-end = <0xc8200000>;
+};
+~~~
+3. Device specific configuration such as I2C, SPI, USB etc
 
 ## Cache thrashing
 
@@ -257,9 +323,9 @@ If CPU writes new data to the location X which was already cached.The update hap
 If DMA transfers new data from hw buffer to memory at location X and if X was already cached, then the CPU will still read the old stale data in cache from location X.This is where you must invalidate the cache line (mark the cache content as invalid) so that you discard the old cache  contents completely and CPU will now have to re-read new data from the memory at location X into cache.
 
 Summary:
-A cache invalidate simply marks the cache contents as invalid. So the next time you access data, you will get what is in the main memory.
+A ***cache invalidate*** simply marks the cache contents as invalid. So the next time you access data, you will get what is in the main memory.
 
-A cache flush writes back data from cache into memory.
+A ***cache flush*** writes back data from cache into memory.
 
 
 Cache coherency problem solution is architecture specific.

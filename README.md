@@ -1,5 +1,6 @@
 # System Calls and Kernels
-System calls can be
+You use System calls to enter in the kernel.
+C lib interacts with the system call. Applications do not need to use sys calls directly, instead they need to use only the C lib api's.
 ### Blocking:
 Here the caller user process has to wait while the sys call is busy and not yet finished.
 ### Non Blocking:
@@ -67,3 +68,4 @@ module_init(hwkm_init);
 module_exit(hkwm_exit);
 
 These functions (i.e. hwkm_init() and hwkm_exit()) get called when the module is loaded and unloaded respectively.
+These are only loadable modules and not built-in kernel drivers.

@@ -36,10 +36,6 @@ The faster the context switches are, the more a user will feel as if the tasks a
 ## Atomic instruction
 An atomic instruction cannot be broken down into smaller operations and it cannot be interrupted by context switches.
 
-## Concurreny issues (Critical section)
-
-## Race Condition
-
 
 ## Synchronisation techniques
 1. Busy Wait
@@ -87,15 +83,48 @@ Task Q {
 ***Critical Section*** contains the portion of the code which needs to be protected to avoid concurrent access by two or more threads.
 e.g. shared memory, updating some device (GPIO) registers etc
 
-## Semaphores vs Mutex
-
 
 ## Memory Ordering and Barriers
+In general the compilers have the tendency to re-order instructions for better performance or performance gain. However this can result in corrupted or undesired results.
+Memory barriers are instructions which help resolve this as they do not allow reordering of instructions and hence read/write or load/store happens in the order the user expects.
+All of Linux's locking primitives, including spinlocks, reader-writer locks, semaphores and read-copy updates (RCUs), include any needed barrier primitives. So if you are working with code that uses these primitives, you don't even need to worry about Linux's memory-ordering primitives.
+API:
+smb_mb() orders both reads and writes
+smb_rmb() orders only reads
+smb_wmb() orders only writes
 
 
 ## Deadlock
+A deadlock is a condition involving one or more threads of execution and one or more resources, such that each thread is waiting for one of the resources, but all the resources are already held. The threads are all waiting for each other, but they will never make any progress toward releasing the resources that they already hold. Therefore, none of the threads can continue, which means we have a deadlock.
+~~~
+Thread 1                      Thread 2
+
+acquire lock A              acquire lock B
+
+TRy to acquire lock B       try to acquire lock A
+
+wait for lock B             wait for lock A
+
+~~~
+To avoid deadlock:
+1. Follow proper lock ordering when there are nested locks.
+2. Do not double acquire the same lock.
 
 ## Priority inversion
+Can be explained wrt 3 threads or tasks. Consider 3 tasks
+Task A with low priority
+Task B with high priority
+Task C with mid priority
+If Task A starts executing and aquires a lock L(semaphore) and is preempted by higher priority Task B which also tries to acquire the lock L, it goes to sleep as lock L was acquired by Task A and due to context switch again Task A starts executing. If another mid priority Task C preemts task A and starts executing until timeout happens and control switches back to Task A which finally releases the lock L and then the high prio Task B gets a chance to execute.
+
+In such a scenario, the high priority Task B is not getting the CPU as it was occupied by Task A and C. This is ***Priortiy Inversion*** where the high priority task behaves like a low priority task for short time i.e. its priority is inverted.
+
+**Solution**:
+Priority Inheritance Protocol:
+Here priority of Task A is temporarily raised to the priority of Task B so that mid priority Task C does not preempt Task A. Task A finishes execution sooner and releases the lock L for Task B which helps to resolve priority inversion.
+e.g. In RTOS (FreeRTOS), instead of semaphore lock we prefer Mutex lock as mutex is implemented to follow the priority inheritance protocol and hence mutex solves the priority inversion problem.
+
+
 
 ## Thread and Process execution and synchronisation
 
