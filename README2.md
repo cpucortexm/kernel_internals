@@ -7,24 +7,39 @@ To have true parallelism you need multiple cores which can run each task on a se
 
 
 ## Task Scheduler (scheduling strategy)
-The task scheduler itself is a piece of program that needs a slice of the CPU core to be executed. So, how does it manage different tasks in order to use the CPU core when another task is using it? Let's suppose that the task scheduler itself is using the CPU core. Firstly, it selects a task from its queue before it sets a timer for a timer interrupt to happen, and it then leaves the CPU
-core and gives its resources over to the selected task.
+The task scheduler itself is a piece of program that needs a slice of the CPU core to be executed. So, how does it manage different tasks in order to use the CPU core when another task is using it? Let's suppose that the task scheduler itself is using the CPU core. Firstly, it selects a task from its queue before it sets a timer for a timer interrupt to happen, and it then leaves the CPU core and gives its resources over to the selected task.
 Now that we have assumed that the task scheduler will give each task a certain amount of time, there is a time that the interrupt will act, and the CPU core stops
 the execution of the current task and immediately loads the task scheduler back into the CPU. Now, the scheduler stores the latest status of the previous task and loads the next one from the queue. All of this goes on until the kernel is up and running. Regarding a machine having a CPU with multiple cores, this can change, and the kernel can use various cores while scheduling the tasks for other cores.
 
-Scheduling strategy can be one of either priority preemptive or cooperative.
+Scheduling strategy can be one of either priority preemptive or cooperative (more applied to RTOS)
 ***Priority Preemptive***:
 If the scheduling strategy is preemptive, the scheduler should be able to forcefully take back the CPU core from the running task in order to give it to the next task. This is called preemptive scheduling.
-Preemptive scheduling algorithms try to share time slices evenly and fairly between different tasks.The time slice sharing algorithms can be ***round-robbin*** only without priority and also could be with priority depending on the kernel. In linux we use priority based preemptive scheduling.
-
+Preemptive scheduling algorithms try to share time slices evenly and fairly between different tasks.The time slice sharing algorithms can be ***round-robbin*** only without priority and also could be with priority depending on the kernel.
 
 Prioritized tasks may get chosen more frequently, or they may even get longer time slices depending upon the implementation of the scheduler.
 
 
 ***Cooperative***:
-The task releases the CPU voluntarily, which is called
-cooperative scheduling. The task is cooperating to give the CPU back.There is no forcibly taking back the CPU.
+The task releases the CPU voluntarily, which is called cooperative scheduling. The task is cooperating to give the CPU back.There is no forcibly taking back the CPU. Cooperative is FIFO kind of scheduling.
 
+**Scheduler details in Linux**:
+To schedule a process is to schedule one of its threads on a processor. In a simplifying move, Linux turns process scheduling into thread scheduling by treating a scheduled process as if it were single-threaded. If a process is multi-threaded with N threads, then N scheduling actions would be required to cover the threads.
+
+Linux supports two scheduling classes
+1. CFS (Completely Fair Scheduler) for normal processes
+2. Class for Real Time processes
+
+**CFS vs Classic Priority Based Preemptive scheudling**
+Classic priority preemptive scheduler is based on two important features
+a.) Fixed timeslice (task is preempted after this time slice say 50 ms)
+b.) Explicit priorities
+There are multiple scheduling queues i.e. one queue for every process priority in the system. e.g. If we have 10 priorities then there will be 10 different queues.
+
+
+CFS does not use these two features at all. It calculates the timeout dynamically and tries to be fair to all the threads. So it does not use any priority as such.
+CFS supports symmetrical multiprocessing (SMP) in which any process (whether kernel or user) can execute on any processor.
+
+The real time scheduling class can be one of FIFO or RR (round robbin).The difference between SCHED_FIFO and SCHED_RR is that among tasks with the same priority, SCHED_RR performs a round-robin with a certain timeslice; SCHED_FIFO, instead, needs the task to explicitly yield the processor.
 
 
 ## Context switch for process and threads
