@@ -181,8 +181,46 @@ API:
 wait_event_interruptible() to block
 wake_up_interruptible() to unblock
 
-## Delay and Timers (jiffies)
+## Timers (jiffies)
+One way to defer the work in the kernel is with timers (other is bottom halves)
+Two timers exist in kernel
+1. Absolute time using hardware chip RTC
+2. Relative time used by scheduler called as kernel timer.
 
+Relative times (kernel timer) is again of 2 types
+a. System timer is based on jiffies
+b. HRT (high resolution timer)
+
+*jiffie* is a variable incremented by 1 everytime due to timer expiry (hardware timer interrupt).
+This increment is called tick.
+If HZ = 100, means jiffie gets incremented HZ times every second.
+
+
+There are timer API's timer_init(), mod_timer(callback function),delete_timer() etc which calls a callback function after the expiry of the timer.
+
+*HRT* are used for real time applications as they are very accurate. They have resolution in micro or nano seconds. They depend on hardware being used. HRT is based on ktime and not on jiffies. HRT has its own API's which must be used to use them.
+
+***Tickless or dynamic tick***:
+When no task is running Scheduler will run the idle thread. In idle thread the system tick timer is disabled. This is called tickless or dynamic tick. This helps save CPU power.
+How it reenables the system tick:
+kernel knows the task timeout or the next timer expiry. It will reenable the system ticks after the task timeout or expiry of the timer so that scheduler can be invoked again.
+
+Since you are disabling and enabling system ticks it is called tickless.
+
+## Delays
+You can delay execution in atomic or non atomic context.
+In atomic or ISR context you cannot sleep. Below function do busy looping and hence can be used in atomic context.
+API'S used are
+ndelay()
+mdelay()
+udelay()
+Even timer callbacks are executed in atomic contexts.
+Sleeping functions like mutex lock() or kmalloc() or sleep() functions are not allowed in atomic contexts.
+
+
+In process or non-atomic contexts the following apis are used:
+usleep() is based on HRT timers for very small usecs delay
+msleep() is based on jiffies
 
 ## Kernel locking mechanisms
 *Race Condition*:
