@@ -9,9 +9,10 @@
 
     ![uboot_load_kernel](images/u-boot.png)
 
-4. Kernel does architecture specific low level kernel initialisation code like enabling MMU, setting up page tables, caches and finally calls non architecture code using start_kernel()
+4. If the kernel is compressed, it will be uncompressed using the uncompression algorithm (both compressed and uncompressed kernel can coexist while decompressing). Slowly as it decompresses, the compressed kernel will cease to exist.
+5. Kernel does architecture specific low level kernel initialisation code like enabling MMU, setting up page tables, caches and finally calls non architecture code using start_kernel()
 
-5. start_kernel() is at init/main.c, and it then initialises the following:
+6. start_kernel() is at init/main.c, and it then initialises the following:
 * initialise kernel core (memory, scheduler, interrupts)
 * init built in drivers
 * mount root file system based on the kernel args passed by u-boot
@@ -40,7 +41,7 @@ They are effective only on built-in kernel modules.
 
 __init is effective on built in drivers as it will free the memory of the function once it is initialised. During kernel build,  the build system groups all the functions with __init in one place so that kernel can discard or free this memory once initialisation is done. Hence for loadable modules it is ineffctive as kernel has to do lot of work to delete the memory as they are not compiled during kernel build.
 
-__exit parameter tells the kernel to omit this function when the module is built-in, since in built in modules this functions would never execute.
+__exit parameter tells the kernel to omit this function when the module is built-in, since in built in modules this functions would never execute. Does not make sense having exit() for built in modules because it will never get called as the driver is built in and the driver will exist until the kernel is shutdown and exit during shutdown makes no sense :-)
 
 ## Platform drivers (I2C, SPI)
 Embedded SOC devices like UART, SPI, I2C, ethernet controllers etc are not hot pluggable. To handle such devices and to fit it into the device model, the platform devices are created.
@@ -56,6 +57,8 @@ static const struct of_device_id my_of_ids[] = {
 { .compatible = "arrow,hellokeys"},
 {},
 }
+This struct would be called using the macro platform_register(my_of_ids)
+
 ~~~
 On match the platform driver probe gets called.
 
@@ -65,7 +68,7 @@ On match the platform driver probe gets called.
 Every hardware interrupt has a number hwirq and corresponding logical number IRQ number in linux. This mapping is needed because multiple hwirq lines may be connected to the same logical IRQ number.
 In linux, you can register an interrupt by using request_irq(irq_no , flags, irq_handler)
 flags = IRQ_SHARED or IRQ_ONESHOT
-IRQ_SHARED: used if interrupt line is shared with multiple devices
+IRQ_SHARED: used if interrupt line is shared with multiple devices. All the handlers with IRQ_SHARED flag will get called one by one for that IRQ number. The param passed to each handler includes the device identifier. If the handler is not matching with the device ID then it must pass IRQ_NONE so that next handler gets called.
 IRQF ONESHOT: The interrupt is not reenabled after the IRQ handler finishes. This flag is required for threaded irq which need to keep the interrupt line disabled until the threaded handler has run
 
 to unregister the handler and to disable the IRQ line call
@@ -93,9 +96,11 @@ SoftIRQs are mostly compile time declarations and do not allow dynamic task crea
 tasklet_init()  --> called in probe or init of the driver
 tasklet_schedule() --> to be called from ISR or Top Half
 
-Work Queue:
+*Work Queue*:
 Managed by events/X kernel threads.
+
 ![WorkQueue](images/workqueue.gif)
+
 At the core is the work queue (struct workqueue_struct), which is the structure onto which work is placed. Work is represented by a work_struct structure that needs to be deferred. The events/X kernel threads (one per CPU) extract work from the work queue and activates one of the bottom-half handlers (as indicated by the handler function in the struct work_struct).
 You can create your own work queue or use the default global kernel work queue. When using default global kernel work queue you do not need to define the workqueue_struct.
 a.) Using private work queue API:
@@ -226,21 +231,23 @@ msleep() is based on jiffies
 *Race Condition*:
 A race condition occurs when two or more threads can access shared data and they try to change it at the same time. Because the thread scheduling algorithm can swap between threads at any time, you don't know the order in which the threads will attempt to access the shared data. Therefore, the result of the change in data is dependent on the thread scheduling algorithm, i.e. both threads are "racing" to access/change the data.
 
-Locking needed to avoid the race consition. i.e. when two processes or threads or kernel threads need to access the same device (e.g GPIO) or shared data etc to prevent corruption or concurrent access of the data.
+Locking needed to avoid the race condition. i.e. when two processes or threads or kernel threads need to access the same device (e.g GPIO) or shared data etc to prevent corruption or concurrent access of the data.
 example: one process tries to write and one tries to read at the same time in the critical section leading to corruption or race condition.
 
 1. **Spinlock**
 Used in multicore or SMP systems.In spinlock you keep wasting the CPU cycles using busy looping. Spinlocks are used in Interrupts where sleeping is not allowed.
 Does not make sense having spinlocks in single core systems as then if the thread aquires the lock then there is no chance to unlock it due to busy loop, until you disable preemption. Spinlocks acquired by the kernel may be implemented by turning off preemption, because this ensures that the kernel will complete its critical section without another process interfering. The entire point is that another process waiting for the lock will not be able to run until the kernel releases the lock.
-On multicore systems, if one core acquires spinlock it will disable spinlock only on this core and not on spinlock waiters.
+On multicore systems, if one core acquires spinlock it will disable preemption only on this core and not on spinlock waiters.
 
 Note: If you keep preemption enabled in spinlocks, then if process A holding the lock is scheduled out and starts process B which also tries to acquire the lock and starts spinning just wasting CPU cycles thus making it very inefficient.
+
 ***Advantages***:
 * It is efficient than mutex as there is no latency associated like rescheduling and you disable preemption in spinlock. Spinlock is designed for efficiency and suited for small & fast critical sections.
 * Easy to implement
+
 ***Disadvantages***:
 * Only suited for interrupts or contexts like timer callbacks where sleeping is not allowed.
-* As spinlocks infinitely spin in a loop(consuming CPU), you can't hold spinlocks for a long time, since waiters will waste CPU time waiting for the lock, whereas a mutex can be held as long as the resource needs to be protected, since contenders are put to sleep in a wait queue
+* As spinlocks infinitely spin in a loop(consuming CPU), you can't hold spinlocks for a long time, since waiters(on other cores) will waste CPU time waiting for the lock, whereas a mutex can be held as long as the resource needs to be protected, since contenders are put to sleep in a wait queue
 
 **Implementing spinlocks**:
 An easy way to implement spinlock is using test and set instruction and is CPU dependent on how it is internally implemented
@@ -259,6 +266,7 @@ while (test_lock(&mylock, 0, 1) != 0) //If thread A takes the lock then thread B
 ~~~
 
 ## Sharing Spinlocks between Interrupt and Process Context
+*Note*: Disabling interrupts on one core will automatically disable preemption in that core.
 It is possible that a critical section needs to be protected by the same lock in both an interrupt and in non-interrupt (process) execution context in the kernel. In this case spin_lock_irqsave() and the spin_unlock_irqrestore() variants have to be used to protect the critical section. This has the effect of disabling interrupts on the executing CPU. You can see in the steps below what could happen if you just used spin_lock() in the process context:
 1. Process context kernel code acquires the spinlock using spin_lock.
 2. While the spinlock is held, an interrupt comes in on the same CPU and executes.
@@ -270,6 +278,7 @@ To prevent this, the process context code needs call spin_lock_irqsave, which ha
 2. **Mutex**
 
 Mutex is used in process context and not in interrupt context as the process holding the mutex is allowed to sleep. If a process A acquires a mutex lock and enters the critical section and is scheduled out due to preemption and if another process B tries to acquire the same mutex then it is put to sleep. i.e. the process B is moved out of run queue and pushed to wait queue. As soon as the mutex is available again then process B is moved back from wait queue back to run queue.
+
 ***Advantages***:
 * As process is allowed to sleep, it does not waste CPU cycles and you can hold mutexes for a long time.
 
@@ -288,8 +297,9 @@ spinlock_t wait_lock;
 struct list_head wait_list;
 [...]
 };
-Contenders are removed from the scheduler run queue and put onto the wait list (wait_list) in a sleep state. The kernel then schedules and executes other tasks. When the
-lock is released, a waiter in the wait queue is woken, moved off the wait_list, and scheduled back.
+Contenders are removed from the scheduler run queue and put onto the wait list (wait_list) in a sleep state.
+The kernel then schedules and executes other tasks. When the lock is released, a waiter in the wait queue
+is woken, moved off the wait_list, and scheduled back.
 
 ~~~
 
@@ -297,8 +307,8 @@ lock is released, a waiter in the wait queue is woken, moved off the wait_list, 
 Semaphores are usually used when there are multiple resources of the same type as counting objects. Here it is called counting semaphores.
 e.g. say we have 2 or more network sockets.
 semaphore count will be 2.
-If Task A acquires one socket count = 1
-If Task B acquires one socket count = 2
+If Task A acquires one socket, semaphore count = 1
+If Task B acquires one socket, semaphore count = 2
 If another Task C tries to get the socket, it will be blocked until one of the Tasks A or B releases the semaphore.
 
 There are three tasks that need access. A counting semaphore is used to limit the number of simultaneous socket connections. Each time a task is finished with the shared resource (that is, its socket closes), it must give back its semaphore so another task can gain access to the network.
@@ -388,6 +398,8 @@ e.g. In Raspi there is no IOMMU hence physical address is used for DMA.
 In x86 platforms or in ARM cortex a53 have IOMMU.
 
 IOMMU is similar to MMU, but this is used for IO devices on the SOC which are connected to the CPU.
+With IOMMU you can write to the virtual address of the device and IOMMU will care to write to the physical address
+of the device.
 
 What is DMA mapping:
 It means allocating DMA buffer and generating bus address(IOMMU)/physical address(non IOMMU) for it. Devices use bus/physical address based on if IOMMU is used or not.
@@ -398,8 +410,8 @@ DMA mapping types:
 
 **Coherent mapping**:
 This does both : allocates memory and also does mapping of this buffer i.e. produce corresponding bus address
-The dma_alloc_coherent() function allocates uncached, unbuffered memory for a device for performing DMA. It  allocates pages, returns the CPU-viewed (virtual) address, and sets the third argument to the device-viewed address.
-Memory allocated is physically contiguous. Automatically manages cache cohereny problems but is too costly as it has to allocate memory and then flush/invalidate
+The dma_alloc_coherent() function allocates uncached, unbuffered memory for a device for performing DMA. It  allocates pages, returns the CPU-viewed (virtual) address, and sets the third argument to the device-viewed address (bus/physical address).
+Memory allocated is physically contiguous. Automatically manages cache coherency problems but is too costly as it has to allocate memory and then flush/invalidate
 API:
 dma_alloc_coherent()
 dma_free_coherent()
