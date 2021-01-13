@@ -1,5 +1,9 @@
 ## Kernel Memory Management
 Linux user and kernel space use virtual memory which is then converted to physical memory using MMU hardware.
+A process causes a virtual memory address to be read (load), written (store), or executed (instruction fetch). Thus the CPU will always generate a virtual address during instruction fetch, memory read/write , which is fed to the MMU for generating the actual physical address.
+## Loader and how a loader loads the program into memory
+The loader is a user-level program that uses mmap and signal handling during loadin of a program into memory.
+
 
 ## Virtual memory layout kernel
 
@@ -17,10 +21,11 @@ Page Table is a kernel data structure mapping between virtual and physical addre
 The concept of the page table is introduced to manage mapping between pages and frames. Pages are spread over tables, so that each PTE corresponds to a mapping between a page and a frame. Each process is then given a set of page tables to describe its whole memory space.
 
 ### Why multilevel page table is used:
-Most architecture requires 32 bits (4 bytes) to represent a PTE. Each process has its private 3 GB user space address, so we need 786,432 entries to characterize and cover a process address space. It represents too much physical
-memory spent per process, just to characterize the memory mappings. To solve this multi level page table is used. The space necessary to store a multilevel page table only depends on the virtual address space actually in use, instead of being proportional to the maximum size of the virtual address space. This way, unused memory is no longer represented.
+Most architecture requires 32 bits (4 bytes) to represent a PTE. Each process has its private 3 GB user space address, so we need 786,432 entries to characterize and cover a process address space.
+*Calculation*: Number of 4K pages in 3GB = (3* 1024 *1024 *1024)/(4 * 1024) = 786,432 PTE entries as one PTE represents one page.
+It represents too much physical memory spent per process, just to characterize the memory mappings. To solve this multi level page table is used. The space necessary to store a multilevel page table only depends on the virtual address space actually in use, instead of being proportional to the maximum size of the virtual address space. This way, unused memory is no longer represented.
 
-Linux has support uptoi 4 level page table, however in ARM 32 bit platforms only 2 levels are sufficient which uses PGD and PTE
+Linux has support upto 4 level page table, however in ARM 32 bit platforms only 2 levels are sufficient which uses PGD and PTE
 Four level paging model has:
 a.) PGD (page global directory)
 b.) PUD ->ignored
@@ -36,7 +41,7 @@ current->mm.pgd == TTBR0.
 **TTBR1** stores the PGD(level1) of the kernel.
 During context switch only TTBR0 will change as kernel space is always fixed mapped during boot.
 
-At context switch (when a new process is scheduled and given the CPU), the kernel immediately configures the MMU and updates the TTBR0 with the new process's pgd.
+At context switch (when a new process is scheduled and given the CPU), the kernel immediately configures the MMU and updates the TTBR0 with the new process's pgd (TTBR0 =current->mm.pgd)
 
 
 ## Page fault exception
@@ -87,7 +92,7 @@ ZONE_DMA: mapped to the kernel virtual address space(HIGHMEM) e.g. dma_alloc_xxx
 
 ZONE_NORMAL: mapped to kernel logical address space. Used for kernel data structures, kmalloc() etc
 
-ZONE_HIGH: mapped to kernel virtual address space (HIGHMEM) e.g. vamlloc()
+ZONE_HIGH: mapped to kernel virtual address space (HIGHMEM) e.g. vmalloc()
 
 Memory Mapped IO:mapped to kernel virtual address space (HIGHMEM) e.g. ioremap() function.
 
@@ -112,6 +117,7 @@ mm_struct contains the pointers or variables pointing to the above segments.
 ## Kernel Memory Allocators
 
 ![kernel_memory_allocators](images/memory_allocators.png)
+
 Page Allocator uses buddy algorithm for memory allocation which allocates pages in 2^n (n = 0, 1, 2 etc) i.e 1, 2, 4, 8, 16...number of physical pages
 
 In linux SLAB allocator is of 3 different implementations:
@@ -144,7 +150,7 @@ Mapping the device registers as memory so that you then read/write on the mapped
 
 In other words if I need to access for say the 4 MB of memory-mapped space assigned to IPU-2 (from 0x02A00000 to 0x02DFFFFF) of the i.MX6, the CPU (by means of the MMU) may assign me address range 0x10000000 to 0x10400000, which is virtual of course. This is not consuming physical RAM (except for building and storing page table entries), but just address space, meaning that the kernel will no longer use this virtual memory range to map RAM(mapping is part of HIGH_MEM actually) . Now any writing/reading operation at this address range ( let's say 0x10000004, for example) will be redirected to the IPU-2 device.
 
-__ioremap() is used for this purpose.
+__ioremap() does this remapping and is used for this purpose.
 After mapping use
 ioread()
 iowrite()
